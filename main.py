@@ -3,7 +3,7 @@ from tkinter import messagebox, simpledialog
 from mysql import connector
 import hashlib
 
-# Database connection
+# another change
 def connect_db():
     return connector.connect(
         host="localhost",
