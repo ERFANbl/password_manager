@@ -1,69 +1,60 @@
 import tkinter as tk
 from tkinter import messagebox, simpledialog
-import mysql.connector
+from mysql import connector
 import hashlib
 
+# Database connection
 def connect_db():
-    return mysql.connector.connect(
+    return connector.connect(
         host="localhost",
-        user="root",
-        password="e0200b1383",
+        user="your_username",
+        password="your_password",
         database="password_manager"
     )
 
+# Hash password
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-def username_exists(username):
+# Check if master password exists
+def master_password_exists():
     db = connect_db()
     cursor = db.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users WHERE username = %s", (username,))
+    cursor.execute("SELECT COUNT(*) FROM users")
     result = cursor.fetchone()
     db.close()
     return result[0] > 0
 
-
-def verify_user(username, master_password):
+# Verify master password
+def verify_master_password(master_password):
     db = connect_db()
     cursor = db.cursor()
-    cursor.execute("SELECT master_password FROM users WHERE username = %s", (username,))
+    cursor.execute("SELECT master_password FROM users WHERE id = 1")
     result = cursor.fetchone()
     db.close()
-    if result:
-        return result[0] == hash_password(master_password)
-    return False
+    return result[0] == hash_password(master_password)
 
-def create_user(username, master_password):
+# Create master password
+def create_master_password(master_password):
     db = connect_db()
     cursor = db.cursor()
-    cursor.execute("INSERT INTO users (username, master_password) VALUES (%s, %s)", (username, hash_password(master_password)))
+    cursor.execute("INSERT INTO users (master_password) VALUES (%s)", (hash_password(master_password),))
     db.commit()
     db.close()
 
+# Main application
 class PasswordManagerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Password Manager")
-        self.username = ''
-        if self.any_user_exists():
+
+        if master_password_exists():
             self.show_login_screen()
         else:
             self.show_registration_screen()
 
-    def any_user_exists(self):
-        db = connect_db()
-        cursor = db.cursor()
-        cursor.execute("SELECT COUNT(*) FROM users")
-        result = cursor.fetchone()
-        db.close()
-        return result[0] > 0
-
     def show_login_screen(self):
         self.clear_screen()
-        self.username_label = tk.Label(self.root, text="Enter Username:")
-        self.username_label.pack()
-        self.username_entry = tk.Entry(self.root)
-        self.username_entry.pack()
         self.master_password_label = tk.Label(self.root, text="Enter Master Password:")
         self.master_password_label.pack()
         self.master_password_entry = tk.Entry(self.root, show='*')
@@ -75,10 +66,6 @@ class PasswordManagerApp:
 
     def show_registration_screen(self):
         self.clear_screen()
-        self.username_label = tk.Label(self.root, text="Create Username:")
-        self.username_label.pack()
-        self.username_entry = tk.Entry(self.root)
-        self.username_entry.pack()
         self.master_password_label = tk.Label(self.root, text="Create Master Password:")
         self.master_password_label.pack()
         self.master_password_entry = tk.Entry(self.root, show='*')
@@ -91,25 +78,21 @@ class PasswordManagerApp:
             widget.destroy()
 
     def login(self):
-        username = self.username_entry.get()
         master_password = self.master_password_entry.get()
-        if verify_user(username, master_password):
+        if verify_master_password(master_password):
             messagebox.showinfo("Success", "Login successful!")
-            self.username = username
             self.show_main_screen()
         else:
-            messagebox.showerror("Error", "Invalid username or master password")
+            messagebox.showerror("Error", "Invalid master password")
 
     def register(self):
-        username = self.username_entry.get()
         master_password = self.master_password_entry.get()
-        if username_exists(username):
-            messagebox.showerror("Error", "Username already exists")
-        else:
-            create_user(username, master_password)
-            messagebox.showinfo("Success", "Account created successfully!")
-            self.username = username
+        if master_password:
+            create_master_password(master_password)
+            messagebox.showinfo("Success", "Master password created successfully!")
             self.show_main_screen()
+        else:
+            messagebox.showerror("Error", "Master password cannot be empty")
 
     def show_main_screen(self):
         self.clear_screen()
@@ -124,25 +107,22 @@ class PasswordManagerApp:
 
     def add_entry(self):
         service = simpledialog.askstring("Service", "Enter service name:")
+        username = simpledialog.askstring("Username", "Enter username:")
         password = simpledialog.askstring("Password", "Enter password:")
-        if service  and  password:
-          try:
+
+        if service and username and password:
             db = connect_db()
             cursor = db.cursor()
             cursor.execute("INSERT INTO passwords (service, username, password) VALUES (%s, %s, %s)",
-                           (service, self.username, password))
+                           (service, username, password))
             db.commit()
-            
-            messagebox.showinfo("Success", "Entry added successfully!")
-          except mysql.connector.Error as err:
-            messagebox.showinfo("Error", f"error: {err}")
-          finally:
             db.close()
+            messagebox.showinfo("Success", "Entry added successfully!")
 
     def view_entries(self):
         db = connect_db()
         cursor = db.cursor()
-        cursor.execute("SELECT service, username, password FROM passwords WHERE username = %s",(self.username,))
+        cursor.execute("SELECT service, username, password FROM passwords")
         entries = cursor.fetchall()
         db.close()
 
@@ -159,11 +139,12 @@ class PasswordManagerApp:
             result = cursor.fetchone()
 
             if result:
+                new_username = simpledialog.askstring("Username", "Enter new username:", initialvalue=result[0])
                 new_password = simpledialog.askstring("Password", "Enter new password:", initialvalue=result[1])
                 
-                if new_password:
-                    cursor.execute("UPDATE passwords SET password = %s WHERE service = %s",
-                                   (new_password, service))
+                if new_username and new_password:
+                    cursor.execute("UPDATE passwords SET username = %s, password = %s WHERE service = %s",
+                                   (new_username, new_password, service))
                     db.commit()
                     db.close()
                     messagebox.showinfo("Success", "Entry updated successfully!")
